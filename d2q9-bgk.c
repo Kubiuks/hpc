@@ -219,9 +219,9 @@ int accelerate_flow(const t_param params, t_speed_SOA* cells, float* obstacles)
   float w2 = params.density * params.accel / 36.f;
 
   /* modify the 2nd row of the grid */
-  int jj = params.ny + 6;
+  int jj = params.ny - 3;
 
-  for (int ii = 8; ii < (params.nx+8); ii++)
+  for (int ii = 8; ii < (params.nx-8); ii++)
   {
     /* if the cell is not occupied and
     ** we don't send a negative density */
@@ -260,9 +260,9 @@ float collision(const t_param params, const t_speed_SOA*  cells, t_speed_SOA*  t
   
 
   /* loop over the cells in the grid */
-  for (int jj = 8; jj < (params.ny+8); jj++)
+  for (int jj = 1; jj < (params.ny-1); jj++)
   {
-    for (int ii = 8; ii < (params.nx+8); ii += 8)
+    for (int ii = 8; ii < (params.nx-8); ii += 8)
 	  { 
 	    /* determine indices of axis-direction neighbours
 	    ** respecting periodic boundary conditions (wrap around) */
@@ -416,9 +416,9 @@ float av_velocity(const t_param params, t_speed_SOA*  cells, float*  obstacles)
   tot_u = 0.f;
 
   /* loop over all non-blocked cells */
-  for (int jj = 8; jj < (params.ny+8); jj++)
+  for (int jj = 1; jj < (params.ny-1); jj++)
   {
-    for (int ii = 8; ii < (params.nx+8); ii++)
+    for (int ii = 8; ii < (params.nx-8); ii++)
 	  {
 	    /* ignore occupied cells */
 	    if (!obstacles[ii + jj*params.nx])
@@ -509,6 +509,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
   if (retval != 1) die("could not read param file: omega", __LINE__, __FILE__);
 
   params->non_obst = params->nx*params->ny;
+  params->nx = params->nx+16;
+  params->ny = params->ny+2;
 
   /* and close up the file */
   fclose(fp);
@@ -550,15 +552,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
   (*cells_ptr_SOA)->c7 = NULL;
   (*cells_ptr_SOA)->c8 = NULL;  
   
-  (*cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
 
   *tmp_cells_ptr_SOA = malloc(sizeof(t_speed_SOA));
   if (*tmp_cells_ptr_SOA == NULL) die("cannot allocate memory for tmp_cells", __LINE__, __FILE__);
@@ -572,15 +574,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
   (*tmp_cells_ptr_SOA)->c7 = NULL;
   (*tmp_cells_ptr_SOA)->c8 = NULL;
 
-  (*tmp_cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*tmp_cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*tmp_cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*tmp_cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*tmp_cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*tmp_cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*tmp_cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*tmp_cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
-  (*tmp_cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*tmp_cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*tmp_cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*tmp_cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*tmp_cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*tmp_cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*tmp_cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*tmp_cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*tmp_cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*tmp_cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
   
 
   /* 'helper' grid, used as scratch space */
@@ -589,7 +591,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
   //if (*tmp_cells_ptr == NULL) die("cannot allocate memory for tmp_cells", __LINE__, __FILE__);
 
   /* the map of obstacles */
-  *obstacles_ptr = malloc(sizeof(float) * (16 *params->ny) * (16 * params->nx));
+  *obstacles_ptr = malloc(sizeof(float) * params->ny * params->nx);
 
   if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
@@ -598,9 +600,9 @@ int initialise(const char* paramfile, const char* obstaclefile,
   float w1 = params->density      / 9.f;
   float w2 = params->density      / 36.f;
   
-  for (int jj = 0; jj < (params->ny+16); jj++)
+  for (int jj = 0; jj < params->ny; jj++)
   {
-    for (int ii = 0; ii < (params->nx+16); ii++)
+    for (int ii = 0; ii < params->nx; ii++)
 	  {
 	  /* centre */
 	  (*cells_ptr_SOA)->c0[ii + jj*params->nx] = w0;
@@ -618,9 +620,9 @@ int initialise(const char* paramfile, const char* obstaclefile,
   }
 
   /* first set all cells in obstacle array to zero */
-  for (int jj = 8; jj < (params->ny+8); jj++)
+  for (int jj = 0; jj < params->ny; jj++)
   {
-    for (int ii = 8; ii < (params->nx+8); ii++)
+    for (int ii = 0; ii < params->nx; ii++)
 	  {
 	  (*obstacles_ptr)[ii + jj*params->nx] = 0.f;
 	  }
@@ -648,7 +650,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
       if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
 
       /* assign to array */
-      (*obstacles_ptr)[xx + 8 + (yy+8)*params->nx] = (float)blocked;
+      (*obstacles_ptr)[xx + 8 + (yy+1)*params->nx] = (float)blocked;
       --params->non_obst;
     }
 
@@ -735,9 +737,9 @@ float total_density(const t_param params, t_speed_SOA* cells)
 {
   float total = 0.f;  /* accumulator */
 
-  for (int jj = 8; jj < (params.ny+8); jj++)
+  for (int jj = 1; jj < (params.ny-1); jj++)
   {
-    for (int ii = 8; ii < (params.nx+8); ii++)
+    for (int ii = 8; ii < (params.nx-8); ii++)
 	  {
 	    total += cells->c0[ii + jj*params.nx];
 	    total += cells->c1[ii + jj*params.nx];
@@ -770,9 +772,9 @@ int write_values(const t_param params, t_speed_SOA* cells, float* obstacles, flo
       die("could not open file output file", __LINE__, __FILE__);
     }
 
-  for (int jj = 8; jj < (params.ny+8); jj++)
+  for (int jj = 1; jj < (params.ny-1); jj++)
     {
-      for (int ii = 8; ii < (params.nx+8); ii++)
+      for (int ii = 8; ii < (params.nx-8); ii++)
 	{
 	  /* an occupied cell */
 	  if (obstacles[ii + jj*params.nx])
@@ -818,7 +820,7 @@ int write_values(const t_param params, t_speed_SOA* cells, float* obstacles, flo
 	    }
 
 	  /* write to file */
-	  fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", (ii-8), (jj-8), u_x, u_y, u, pressure, (int)obstacles[ii * params.nx + jj]);
+	  fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", (ii-8), (jj-1), u_x, u_y, u, pressure, (int)obstacles[ii * params.nx + jj]);
 	}
     }
 
