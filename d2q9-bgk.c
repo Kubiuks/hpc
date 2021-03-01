@@ -258,6 +258,7 @@ float collision(const t_param params, const t_speed_SOA*  cells, t_speed_SOA*  t
   __m256 w0_vector   = _mm256_set1_ps(w0);
   __m256 w1_vector   = _mm256_set1_ps(w1);
   __m256 w2_vector   = _mm256_set1_ps(w2);
+  
 
   /* loop over the cells in the grid */
   for (int jj = 8; jj < (params.ny+8); jj++)
@@ -357,42 +358,42 @@ float collision(const t_param params, const t_speed_SOA*  cells, t_speed_SOA*  t
       // tmp_x_new: |01010|01110|01011|01010|
       // mask_obst: |11111|11111|00000|11111|
       // give:      |01010|01110|00000|01010|
-      __m256 tmp_0_new_no_obst = _mm256_and_ps(tmp_0_new, mask_obst);
-      __m256 tmp_1_new_no_obst = _mm256_and_ps(tmp_1_new, mask_obst);
-      __m256 tmp_2_new_no_obst = _mm256_and_ps(tmp_2_new, mask_obst);
-      __m256 tmp_3_new_no_obst = _mm256_and_ps(tmp_3_new, mask_obst);
-      __m256 tmp_4_new_no_obst = _mm256_and_ps(tmp_4_new, mask_obst);
-      __m256 tmp_5_new_no_obst = _mm256_and_ps(tmp_5_new, mask_obst);
-      __m256 tmp_6_new_no_obst = _mm256_and_ps(tmp_6_new, mask_obst);
-      __m256 tmp_7_new_no_obst = _mm256_and_ps(tmp_7_new, mask_obst);
-      __m256 tmp_8_new_no_obst = _mm256_and_ps(tmp_8_new, mask_obst);
 
       // performing an AND on tmp_x and mask_cell will zero out all the cell entries
+
       // adding those two together will give the desired vector
-      _mm256_store_ps(&tmp_cells->c0[ii + jj*params.nx], _mm256_add_ps(tmp_0_new_no_obst, _mm256_and_ps(tmp_0, mask_cell)));
-      _mm256_store_ps(&tmp_cells->c1[ii + jj*params.nx], _mm256_add_ps(tmp_1_new_no_obst, _mm256_and_ps(tmp_3, mask_cell)));
-      _mm256_store_ps(&tmp_cells->c2[ii + jj*params.nx], _mm256_add_ps(tmp_2_new_no_obst, _mm256_and_ps(tmp_4, mask_cell)));
-      _mm256_store_ps(&tmp_cells->c3[ii + jj*params.nx], _mm256_add_ps(tmp_3_new_no_obst, _mm256_and_ps(tmp_1, mask_cell)));
-      _mm256_store_ps(&tmp_cells->c4[ii + jj*params.nx], _mm256_add_ps(tmp_4_new_no_obst, _mm256_and_ps(tmp_2, mask_cell)));
-      _mm256_store_ps(&tmp_cells->c5[ii + jj*params.nx], _mm256_add_ps(tmp_5_new_no_obst, _mm256_and_ps(tmp_7, mask_cell)));
-      _mm256_store_ps(&tmp_cells->c6[ii + jj*params.nx], _mm256_add_ps(tmp_6_new_no_obst, _mm256_and_ps(tmp_8, mask_cell)));
-      _mm256_store_ps(&tmp_cells->c7[ii + jj*params.nx], _mm256_add_ps(tmp_7_new_no_obst, _mm256_and_ps(tmp_5, mask_cell)));
-      _mm256_store_ps(&tmp_cells->c8[ii + jj*params.nx], _mm256_add_ps(tmp_8_new_no_obst, _mm256_and_ps(tmp_6, mask_cell)));
+      _mm256_store_ps(&tmp_cells->c0[ii + jj*params.nx], _mm256_add_ps(_mm256_and_ps(tmp_0_new, mask_obst), _mm256_and_ps(tmp_0, mask_cell)));
+      _mm256_store_ps(&tmp_cells->c1[ii + jj*params.nx], _mm256_add_ps(_mm256_and_ps(tmp_1_new, mask_obst), _mm256_and_ps(tmp_3, mask_cell)));
+      _mm256_store_ps(&tmp_cells->c2[ii + jj*params.nx], _mm256_add_ps(_mm256_and_ps(tmp_2_new, mask_obst), _mm256_and_ps(tmp_4, mask_cell)));
+      _mm256_store_ps(&tmp_cells->c3[ii + jj*params.nx], _mm256_add_ps(_mm256_and_ps(tmp_3_new, mask_obst), _mm256_and_ps(tmp_1, mask_cell)));
+      _mm256_store_ps(&tmp_cells->c4[ii + jj*params.nx], _mm256_add_ps(_mm256_and_ps(tmp_4_new, mask_obst), _mm256_and_ps(tmp_2, mask_cell)));
+      _mm256_store_ps(&tmp_cells->c5[ii + jj*params.nx], _mm256_add_ps(_mm256_and_ps(tmp_5_new, mask_obst), _mm256_and_ps(tmp_7, mask_cell)));
+      _mm256_store_ps(&tmp_cells->c6[ii + jj*params.nx], _mm256_add_ps(_mm256_and_ps(tmp_6_new, mask_obst), _mm256_and_ps(tmp_8, mask_cell)));
+      _mm256_store_ps(&tmp_cells->c7[ii + jj*params.nx], _mm256_add_ps(_mm256_and_ps(tmp_7_new, mask_obst), _mm256_and_ps(tmp_5, mask_cell)));
+      _mm256_store_ps(&tmp_cells->c8[ii + jj*params.nx], _mm256_add_ps(_mm256_and_ps(tmp_8_new, mask_obst), _mm256_and_ps(tmp_6, mask_cell)));
 
       // calcuale av_vel
+      // can't use no_obst because we would divide by 0
+      __m256 tmp_158_new = _mm256_add_ps(_mm256_add_ps(tmp_1_new, tmp_5_new), tmp_8_new);
+      __m256 tmp_367_new = _mm256_add_ps(_mm256_add_ps(tmp_3_new, tmp_6_new), tmp_7_new);
+      __m256 tmp_256_new = _mm256_add_ps(_mm256_add_ps(tmp_2_new, tmp_5_new), tmp_6_new);
+      __m256 tmp_478_new = _mm256_add_ps(_mm256_add_ps(tmp_4_new, tmp_7_new), tmp_8_new);
 
-      __m256 tmp_158_new = _mm256_add_ps(_mm256_add_ps(tmp_1_new_no_obst, tmp_5_new_no_obst), tmp_8_new_no_obst);
-      __m256 tmp_367_new = _mm256_add_ps(_mm256_add_ps(tmp_3_new_no_obst, tmp_6_new_no_obst), tmp_7_new_no_obst);
-      __m256 tmp_256_new = _mm256_add_ps(_mm256_add_ps(tmp_2_new_no_obst, tmp_5_new_no_obst), tmp_6_new_no_obst);
-      __m256 tmp_478_new = _mm256_add_ps(_mm256_add_ps(tmp_4_new_no_obst, tmp_7_new_no_obst), tmp_8_new_no_obst);
-
-      __m256 local_density_new = _mm256_add_ps(_mm256_add_ps(_mm256_add_ps(tmp_0_new_no_obst, tmp_256_new), _mm256_add_ps(tmp_478_new, tmp_3_new_no_obst)), tmp_1_new_no_obst);
+      __m256 local_density_new = _mm256_add_ps(_mm256_add_ps(_mm256_add_ps(tmp_0_new, tmp_256_new), _mm256_add_ps(tmp_478_new, tmp_3_new)), tmp_1_new);
 
       __m256 u_x_new = _mm256_div_ps(_mm256_sub_ps(tmp_158_new, tmp_367_new), local_density_new);
       __m256 u_y_new = _mm256_div_ps(_mm256_sub_ps(tmp_256_new, tmp_478_new), local_density_new);
 
-      tot_u = _mm256_add_ps(tot_u, _mm256_sqrt_ps(_mm256_fmadd_ps(u_x, u_x, _mm256_mul_ps(u_y, u_y))));
+      __m256 temp_u = _mm256_sqrt_ps(_mm256_fmadd_ps(u_x_new, u_x_new, _mm256_mul_ps(u_y_new, u_y_new)));
 
+      // now zero out all entries in temp_u that are 0000000 in mask
+      // so that we add 0 to tot_u for those entires
+      // we can just perform AND on temp_u and mask such that
+      // |0101010|011011| - some floats
+      // |1111111|000000| - mask
+      // |0101010|000000| - ANDing the two
+
+      tot_u = _mm256_add_ps(tot_u, _mm256_and_ps(temp_u, mask_obst));
 	  }
   }
 
