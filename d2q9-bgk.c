@@ -219,7 +219,7 @@ int accelerate_flow(const t_param params, t_speed_SOA* cells, float* obstacles)
   float w2 = params.density * params.accel / 36.f;
 
   /* modify the 2nd row of the grid */
-  int jj = params.ny - 3;
+  int jj = params.ny - 2;
 
   for (int ii = 8; ii < (params.nx-8); ii++)
   {
@@ -260,15 +260,15 @@ float collision(const t_param params, const t_speed_SOA*  cells, t_speed_SOA*  t
   
 
   /* loop over the cells in the grid */
-  for (int jj = 1; jj < (params.ny-1); jj++)
+  for (int jj = 0; jj < params.ny; jj++)
   {
     for (int ii = 8; ii < (params.nx-8); ii += 8)
 	  { 
 	    /* determine indices of axis-direction neighbours
 	    ** respecting periodic boundary conditions (wrap around) */
-	    int y_n = jj + 1;
+	    int y_n = (jj + 1) % params.ny;
 	    int x_e = ii + 1;
-	    int y_s = jj - 1;
+	    int y_s = (jj == 0) ? (jj + params.ny - 1) : (jj - 1);
 	    int x_w = ii - 1;
 
 	    __m256 tmp_0 = _mm256_load_ps(&cells->c0[ii  +  jj*params.nx]); /* central cell, no movement */
@@ -416,7 +416,7 @@ float av_velocity(const t_param params, t_speed_SOA*  cells, float*  obstacles)
   tot_u = 0.f;
 
   /* loop over all non-blocked cells */
-  for (int jj = 1; jj < (params.ny-1); jj++)
+  for (int jj = 0; jj < params.ny; jj++)
   {
     for (int ii = 8; ii < (params.nx-8); ii++)
 	  {
@@ -510,7 +510,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   params->non_obst = params->nx*params->ny;
   params->nx = params->nx+16;
-  params->ny = params->ny+2;
 
   /* and close up the file */
   fclose(fp);
@@ -552,15 +551,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
   (*cells_ptr_SOA)->c7 = NULL;
   (*cells_ptr_SOA)->c8 = NULL;  
   
-  (*cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
 
   *tmp_cells_ptr_SOA = malloc(sizeof(t_speed_SOA));
   if (*tmp_cells_ptr_SOA == NULL) die("cannot allocate memory for tmp_cells", __LINE__, __FILE__);
@@ -574,15 +573,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
   (*tmp_cells_ptr_SOA)->c7 = NULL;
   (*tmp_cells_ptr_SOA)->c8 = NULL;
 
-  (*tmp_cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*tmp_cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*tmp_cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*tmp_cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*tmp_cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*tmp_cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*tmp_cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*tmp_cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
-  (*tmp_cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*params->nx*params->ny,32);
+  (*tmp_cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*tmp_cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*tmp_cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*tmp_cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*tmp_cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*tmp_cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*tmp_cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*tmp_cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
+  (*tmp_cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
   
 
   /* 'helper' grid, used as scratch space */
@@ -650,7 +649,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
       if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
 
       /* assign to array */
-      (*obstacles_ptr)[xx + 8 + (yy+1)*params->nx] = (float)blocked;
+      (*obstacles_ptr)[xx + 8 + yy*params->nx] = (float)blocked;
       --params->non_obst;
     }
 
@@ -737,7 +736,7 @@ float total_density(const t_param params, t_speed_SOA* cells)
 {
   float total = 0.f;  /* accumulator */
 
-  for (int jj = 1; jj < (params.ny-1); jj++)
+  for (int jj = 0; jj < params.ny; jj++)
   {
     for (int ii = 8; ii < (params.nx-8); ii++)
 	  {
@@ -772,7 +771,7 @@ int write_values(const t_param params, t_speed_SOA* cells, float* obstacles, flo
       die("could not open file output file", __LINE__, __FILE__);
     }
 
-  for (int jj = 1; jj < (params.ny-1); jj++)
+  for (int jj = 0; jj < params.ny; jj++)
     {
       for (int ii = 8; ii < (params.nx-8); ii++)
 	{
@@ -820,7 +819,7 @@ int write_values(const t_param params, t_speed_SOA* cells, float* obstacles, flo
 	    }
 
 	  /* write to file */
-	  fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", (ii-8), (jj-1), u_x, u_y, u, pressure, (int)obstacles[ii * params.nx + jj]);
+	  fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", (ii-8), jj, u_x, u_y, u, pressure, (int)obstacles[ii * params.nx + jj]);
 	}
     }
 
