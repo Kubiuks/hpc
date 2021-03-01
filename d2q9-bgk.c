@@ -66,7 +66,6 @@ typedef struct
 {
   int    nx;            /* no. of cells in x-direction */
   int    ny;            /* no. of cells in y-direction */
-  int    n;             // nx*ny number of all cells
   int    non_obst;       // number of non obstacle cells
   int    maxIters;      /* no. of iterations */
   int    reynolds_dim;  /* dimension for Reynolds number */
@@ -394,6 +393,7 @@ float collision(const t_param params, const t_speed_SOA*  cells, t_speed_SOA*  t
       // |0101010|000000| - ANDing the two
 
       tot_u = _mm256_add_ps(tot_u, _mm256_and_ps(temp_u, mask_obst));
+
 	  }
   }
 
@@ -508,8 +508,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   if (retval != 1) die("could not read param file: omega", __LINE__, __FILE__);
 
-  params->n = params->nx * params->ny;
-  params->non_obst = params->n;
+  params->non_obst = params->nx*params->ny;
 
   /* and close up the file */
   fclose(fp);
@@ -551,15 +550,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
   (*cells_ptr_SOA)->c7 = NULL;
   (*cells_ptr_SOA)->c8 = NULL;  
   
-  (*cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
+  (*cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
 
   *tmp_cells_ptr_SOA = malloc(sizeof(t_speed_SOA));
   if (*tmp_cells_ptr_SOA == NULL) die("cannot allocate memory for tmp_cells", __LINE__, __FILE__);
@@ -573,15 +572,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
   (*tmp_cells_ptr_SOA)->c7 = NULL;
   (*tmp_cells_ptr_SOA)->c8 = NULL;
 
-  (*tmp_cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*tmp_cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*tmp_cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*tmp_cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*tmp_cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*tmp_cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*tmp_cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*tmp_cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
-  (*tmp_cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*(16*params->nx)*(16*params->ny),32);
+  (*tmp_cells_ptr_SOA)->c0 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*tmp_cells_ptr_SOA)->c1 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*tmp_cells_ptr_SOA)->c2 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*tmp_cells_ptr_SOA)->c3 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*tmp_cells_ptr_SOA)->c4 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*tmp_cells_ptr_SOA)->c5 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*tmp_cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*tmp_cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
+  (*tmp_cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*(16+params->nx)*(16+params->ny),32);
   
 
   /* 'helper' grid, used as scratch space */
