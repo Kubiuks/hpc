@@ -57,6 +57,8 @@
 #include <sys/resource.h>
 #include <immintrin.h>
 
+#pragma omp declare reduction(_mm256_add_ps : __m256 : omp_out = _mm256_add_ps(omp_in, omp_out))
+
 #define NSPEEDS         9
 #define FINALSTATEFILE  "final_state.dat"
 #define AVVELSFILE      "av_vels.dat"
@@ -220,7 +222,7 @@ int accelerate_flow(const t_param params, t_speed_SOA* cells, float* obstacles)
 
   /* modify the 2nd row of the grid */
   int jj = params.ny - 2;
-
+  
   for (int ii = 8; ii < (params.nx-8); ii++)
   {
     /* if the cell is not occupied and
@@ -260,6 +262,8 @@ float collision(const t_param params, const t_speed_SOA*  cells, t_speed_SOA*  t
   
 
   /* loop over the cells in the grid */
+
+  #pragma omp parallel for reduction(_mm256_add_ps:tot_u)
   for (int jj = 0; jj < params.ny; jj++)
   {
     for (int ii = 8; ii < (params.nx-8); ii += 8)
@@ -599,9 +603,10 @@ int initialise(const char* paramfile, const char* obstaclefile,
   float w1 = params->density      / 9.f;
   float w2 = params->density      / 36.f;
   
+  #pragma omp parallel for
   for (int jj = 0; jj < params->ny; jj++)
   {
-    for (int ii = 0; ii < params->nx; ii++)
+    for (int ii = 8; ii < (params->nx-8); ii++)
 	  {
 	  /* centre */
 	  (*cells_ptr_SOA)->c0[ii + jj*params->nx] = w0;
@@ -619,9 +624,10 @@ int initialise(const char* paramfile, const char* obstaclefile,
   }
 
   /* first set all cells in obstacle array to zero */
+  #pragma omp parallel for
   for (int jj = 0; jj < params->ny; jj++)
   {
-    for (int ii = 0; ii < params->nx; ii++)
+    for (int ii = 8; ii < (params->nx-8); ii++)
 	  {
 	  (*obstacles_ptr)[ii + jj*params->nx] = 0.f;
 	  }
