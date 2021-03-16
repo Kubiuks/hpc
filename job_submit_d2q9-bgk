@@ -1,8 +1,9 @@
 #!/bin/bash
 
+#SBATCH --exclusive
 #SBATCH --job-name d2q9-bgk
 #SBATCH --nodes 1
-#SBATCH --ntasks-per-node 14
+#SBATCH --ntasks-per-node 4
 #SBATCH --time 00:10:00
 #SBATCH --partition veryshort
 #SBATCH --reservation=COSC024002
@@ -16,8 +17,11 @@ echo Slurm job ID is $SLURM_JOB_ID
 echo This job runs on the following machines:
 echo `echo $SLURM_JOB_NODELIST | uniq`
 
+export I_MPI_PMI_LIBRARY=/usr/lib64/libpmi.so
+
 #! Run the executable
-./d2q9-bgk input_128x128.params obstacles_128x128.dat
-#./d2q9-bgk input_128x256.params obstacles_128x256.dat
-#./d2q9-bgk input_256x256.params obstacles_256x256.dat
-#./d2q9-bgk input_1024x1024.params obstacles_1024x1024.dat
+# perf stat -B -e cache-references,cache-misses,cycles,instructions,branches,faults,migrations  
+srun -l ./d2q9-bgk input_128x128.params obstacles_128x128.dat
+#srun ./d2q9-bgk input_128x256.params obstacles_128x256.dat
+#srun ./d2q9-bgk input_256x256.params obstacles_256x256.dat
+#srun./d2q9-bgk input_1024x1024.params obstacles_1024x1024.dat

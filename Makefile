@@ -1,9 +1,8 @@
 # Makefile
-
 EXE=d2q9-bgk
 
-CC=gcc
-CFLAGS= -DDEBUG -std=c99 -Wall -Ofast
+CC=mpiicc
+CFLAGS= -std=c99 -Wall -Ofast -xHost
 LIBS = -lm
 
 FINAL_STATE_FILE=./final_state.dat
