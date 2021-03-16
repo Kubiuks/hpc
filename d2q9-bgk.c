@@ -76,8 +76,10 @@ typedef struct
   float omega;         /* relaxation parameter */
   int nprocs;
   int rank;
-  int row_above;
-  int row_below;
+  int rank_row_above;
+  int rank_row_below;
+  int start_ny;
+  int end_ny;
 } t_param;
 
 /* struct to hold the 'speed' values */
@@ -526,6 +528,10 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   if (retval != 1) die("could not read param file: omega", __LINE__, __FILE__);
 
+  /* and close up the file */
+  fclose(fp);
+
+  // calculate what rows the rank will be allocated and other constants
   params->non_obst = params->nx*params->ny;
   params->nx = params->nx+16;
 
@@ -536,35 +542,23 @@ int initialise(const char* paramfile, const char* obstaclefile,
   params->nprocs = nprocs;
   params->rank = rank;
 
-  params->row_above = (rank + 1) % nprocs;
-  params->row_below = (rank == MASTER) ? (rank + nprocs - 1) : (rank - 1);
-
-  /* and close up the file */
-  fclose(fp);
-
-  /*
-  ** Allocate memory.
-  **
-  ** Remember C is pass-by-value, so we need to
-  ** pass pointers into the initialise function.
-  **
-  ** NB we are allocating a 1D array, so that the
-  ** memory will be contiguous.  We still want to
-  ** index this memory as if it were a (row major
-  ** ordered) 2D array, however.  We will perform
-  ** some arithmetic using the row and column
-  ** coordinates, inside the square brackets, when
-  ** we want to access elements of this array.
-  **
-  ** Note also that we are using a structure to
-  ** hold an array of 'speeds'.  We will allocate
-  ** a 1D array of these structs.
-  */
-
-  /* main grid */
-  //*cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
-
-  //if (*cells_ptr == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
+  params->rank_row_above = (rank + 1) % nprocs;
+  params->rank_row_below = (rank == MASTER) ? (rank + nprocs - 1) : (rank - 1);
+  
+  // to spread the work as evenly as possible I split the number of rows like:
+  // (⌊ny/nprocs⌋ + 1) rows in (ny (mod nprocs)) ranks
+  // ⌊ny/nprocs⌋ rows in the rest of the ranks (nprocs - (ny (mod nprocs)))
+  int num_rows_per_rank = floor(params->ny/nprocs);
+  int num_heavier_ranks = params->ny % nprocs;
+  if(rank < num_heavier_ranks){
+    // these get 1 more row than rest
+    params->start_ny = rank * (num_rows_per_rank+1);
+    params->end_ny = params->start_ny + (num_rows_per_rank+1);
+  } else {
+    params->start_ny = rank * num_rows_per_rank + num_heavier_ranks;
+    params->end_ny = params->start_ny + num_rows_per_rank;
+  }
+  int my_num_rows = params->end_ny - params->start_ny;
 
   // allocating memory for SOA
   *cells_ptr_SOA = malloc(sizeof(t_speed_SOA));
@@ -610,12 +604,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
   (*tmp_cells_ptr_SOA)->c6 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
   (*tmp_cells_ptr_SOA)->c7 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
   (*tmp_cells_ptr_SOA)->c8 = _mm_malloc(sizeof(float)*params->nx*params->ny,64);
-  
-
-  /* 'helper' grid, used as scratch space */
-  //*tmp_cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
-
-  //if (*tmp_cells_ptr == NULL) die("cannot allocate memory for tmp_cells", __LINE__, __FILE__);
 
   /* the map of obstacles */
   *obstacles_ptr = malloc(sizeof(float) * params->ny * params->nx);
