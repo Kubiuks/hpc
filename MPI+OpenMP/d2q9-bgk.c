@@ -81,6 +81,8 @@ typedef struct
   int start_ny;
   int end_ny;
   int my_num_rows;
+  MPI_Comm comm;
+  int flag;
 } t_param;
 
 /* struct to hold the 'speed' values */
@@ -121,7 +123,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 */
 float timestep(const t_param params, t_speed_SOA* cells, t_speed_SOA* tmp_cells, float* obstacles);
 int accelerate_flow(const t_param params, t_speed_SOA* cells, float* obstacles);
-float collision(const t_param params, const t_speed_SOA*  cells, t_speed_SOA*  tmp_cells, float* obstacles);
+float collision(const t_param params, t_speed_SOA*  cells, t_speed_SOA*  tmp_cells, float* obstacles);
 int write_values(const t_param params, t_speed_SOA* cells, float* obstacles, float* av_vels);
 
 /* finalise, including freeing up allocated memory */
@@ -159,6 +161,7 @@ int main(int argc, char* argv[])
   float* av_vels   = NULL;      /* a record of the av. velocity computed for each timestep */
   struct timeval timstr;                                                             /* structure to hold elapsed time */
   double tot_tic, tot_toc, init_tic, init_toc, comp_tic, comp_toc, col_tic, col_toc; /* floating point numbers to calculate elapsed wallclock time */
+  params.flag = 0;
 
   /* parse the command line */
   if (argc != 3)
@@ -175,7 +178,13 @@ int main(int argc, char* argv[])
   gettimeofday(&timstr, NULL);
   tot_tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   init_tic=tot_tic;
+  
   initialise(paramfile, obstaclefile, &params, &obstacles, &av_vels, &cells, &tmp_cells);
+  if(params.flag == 1){
+    MPI_Comm_free(&params.comm);
+    MPI_Finalize();
+    return EXIT_SUCCESS;
+  }
 
   /* Init time stops here, compute time starts*/
   gettimeofday(&timstr, NULL);
@@ -212,8 +221,6 @@ int main(int argc, char* argv[])
   gettimeofday(&timstr, NULL);
   col_toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   tot_toc = col_toc;
-
-
 
   /* write final values and free memory */
   if (params.rank == MASTER){
@@ -271,8 +278,64 @@ int accelerate_flow(const t_param params, t_speed_SOA* cells, float* obstacles)
   return EXIT_SUCCESS;
 }
 
-float collision(const t_param params, const t_speed_SOA*  cells, t_speed_SOA*  tmp_cells, float* obstacles)
+float collision(const t_param params, t_speed_SOA*  cells, t_speed_SOA*  tmp_cells, float* obstacles)
 { 
+  MPI_Request requests_receive[2], requests_send[2];
+
+  MPI_Aint base_address;
+  MPI_Aint address;
+
+  int block_lengths[3];
+  MPI_Datatype typelist[3];
+  MPI_Aint displacements[3];
+
+  block_lengths[0] = block_lengths[1] = block_lengths[2] = params.nx-16;
+  typelist[0] = typelist[1] = typelist[2] = MPI_FLOAT;
+  displacements[0] = 0;
+
+  MPI_Address(&cells->c2[8 + params.my_num_rows*params.nx], &base_address);
+  MPI_Address(&cells->c5[8 + params.my_num_rows*params.nx], &address);
+  displacements[1] = address - base_address;
+
+  MPI_Address(&cells->c6[8 + params.my_num_rows*params.nx], &address);
+  displacements[2] = address - base_address;
+
+  MPI_Datatype composite_row;
+  MPI_Type_struct(3, block_lengths, displacements, typelist, &composite_row);
+  MPI_Type_commit(&composite_row);
+
+  // receive bottom
+  MPI_Irecv(&cells->c2[8], 1, composite_row, params.rank_row_below, 0, params.comm, &requests_receive[0]);
+
+  MPI_Aint base_address_2;
+  MPI_Aint address_2;
+
+  int block_lengths_2[3];
+  MPI_Datatype typelist_2[3];
+  MPI_Aint displacements_2[3];
+
+  block_lengths_2[0] = block_lengths_2[1] = block_lengths_2[2] = params.nx-16;
+  typelist_2[0] = typelist_2[1] = typelist_2[2] = MPI_FLOAT;
+  displacements_2[0] = 0;
+
+  MPI_Address(&cells->c4[8 + params.nx], &base_address_2);
+  MPI_Address(&cells->c7[8 + params.nx], &address_2);
+  displacements_2[1] = address_2 - base_address_2;
+
+  MPI_Address(&cells->c8[8 + params.nx], &address_2);
+  displacements_2[2] = address_2 - base_address_2;
+
+  MPI_Datatype composite_row_2;
+  MPI_Type_struct(3, block_lengths_2, displacements_2, typelist_2, &composite_row_2);
+  MPI_Type_commit(&composite_row_2);
+
+  // receive top
+  MPI_Irecv(&cells->c4[8 + (params.my_num_rows+1)*params.nx], 1, composite_row_2, params.rank_row_above, 0, params.comm, &requests_receive[1]);
+
+  // send top, sned bottom
+  MPI_Isend(&cells->c2[8 + params.my_num_rows*params.nx], 1, composite_row, params.rank_row_above, 0, params.comm, &requests_send[0]);
+  MPI_Isend(&cells->c4[8 + params.nx], 1, composite_row_2, params.rank_row_below, 0, params.comm, &requests_send[1]);
+
   const float w0 = 4.f / 9.f;   /* weighting factor */
   const float w1 = 1.f / 9.f;   /* weighting factor */
   const float w2 = 1.f / 36.f;  /* weighting factor */
@@ -286,32 +349,7 @@ float collision(const t_param params, const t_speed_SOA*  cells, t_speed_SOA*  t
   __m256 w1_vector   = _mm256_set1_ps(w1);
   __m256 w2_vector   = _mm256_set1_ps(w2);
 
-  MPI_Datatype row;
-  MPI_Type_vector(1, params.nx, 1, MPI_FLOAT, &row);
-  MPI_Type_commit(&row);
-
-  // send up, receive bottom
-  MPI_Sendrecv(&cells->c2[params.my_num_rows*params.nx], 1, row, params.rank_row_above, 0,
-               &cells->c2[0], 1, row, params.rank_row_below, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  MPI_Sendrecv(&cells->c5[params.my_num_rows*params.nx], 1, row, params.rank_row_above, 0,
-               &cells->c5[0], 1, row, params.rank_row_below, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  MPI_Sendrecv(&cells->c6[params.my_num_rows*params.nx], 1, row, params.rank_row_above, 0,
-               &cells->c6[0], 1, row, params.rank_row_below, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-  // send down, receive top
-  MPI_Sendrecv(&cells->c4[params.nx], 1, row, params.rank_row_below, 0,
-               &cells->c4[(params.my_num_rows+1)*params.nx], 1, row, params.rank_row_above, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  MPI_Sendrecv(&cells->c7[params.nx], 1, row, params.rank_row_below, 0,
-               &cells->c7[(params.my_num_rows+1)*params.nx], 1, row, params.rank_row_above, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  MPI_Sendrecv(&cells->c8[params.nx], 1, row, params.rank_row_below, 0,
-               &cells->c8[(params.my_num_rows+1)*params.nx], 1, row, params.rank_row_above, 0,
-               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
+  MPI_Waitall(2, requests_receive, MPI_STATUSES_IGNORE);
 
   /* loop over the cells in the grid */
   for (int jj = 1; jj < params.my_num_rows+1; jj++)
@@ -458,9 +496,10 @@ float collision(const t_param params, const t_speed_SOA*  cells, t_speed_SOA*  t
   {
     temp_tot_u += (float)tot_u[i];
   }
-
-  MPI_Type_free(&row);
-  MPI_Reduce(&temp_tot_u, &res_tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
+  MPI_Waitall(2, requests_send, MPI_STATUSES_IGNORE);
+  MPI_Type_free(&composite_row);
+  MPI_Type_free(&composite_row_2);
+  MPI_Reduce(&temp_tot_u, &res_tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, params.comm);
 
   return res_tot_u / (float)params.non_obst;
 }
@@ -513,7 +552,7 @@ float av_velocity(const t_param params, t_speed_SOA*  cells, float*  obstacles)
   }
   float res_tot_u = 0.f;
 
-  MPI_Reduce(&tot_u, &res_tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
+  MPI_Reduce(&tot_u, &res_tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, params.comm);
 
   return res_tot_u / (float)params.non_obst;
 }
@@ -570,12 +609,28 @@ int initialise(const char* paramfile, const char* obstaclefile,
   fclose(fp);
 
   // calculate what rows the rank will be allocated and other constants
-  int nprocs, rank;
-  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  int tmp_rank, tmp_nprocs;
+  MPI_Comm_rank(MPI_COMM_WORLD, &tmp_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &tmp_nprocs);
+
+  int var = 14;
+
+  if(params->nx == 128 && tmp_nprocs > var){
+    MPI_Comm_split(MPI_COMM_WORLD, tmp_rank<var, tmp_rank, &params->comm);
+    if(tmp_rank >= var){
+      params->flag = 1;
+      return EXIT_SUCCESS;
+    }
+  } else {
+    params->comm = MPI_COMM_WORLD;
+  }
   
-  params->nprocs = nprocs;
+  int nprocs, rank;
+  MPI_Comm_size(params->comm, &nprocs);
+  MPI_Comm_rank(params->comm, &rank);
+
   params->rank = rank;
+  params->nprocs = nprocs;
 
   params->rank_row_above = (rank + 1) % nprocs;
   params->rank_row_below = (rank == MASTER) ? (rank + nprocs - 1) : (rank - 1);
@@ -793,7 +848,7 @@ float total_density(const t_param params, t_speed_SOA* cells)
 
   float res_total = 0.f;
 
-  MPI_Reduce(&total, &res_total, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
+  MPI_Reduce(&total, &res_total, 1, MPI_FLOAT, MPI_SUM, MASTER, params.comm);
 
   return res_total;
 }
@@ -807,32 +862,26 @@ int write_values(const t_param params, t_speed_SOA* cells, float* obstacles, flo
   float u_x;                   /* x-component of velocity in grid cell */
   float u_y;                   /* y-component of velocity in grid cell */
   float u;                     /* norm--root of summed squares--of u_x and u_y */
-  MPI_File file_handle;
 
-  int err = MPI_File_open(MPI_COMM_WORLD, FINALSTATEFILE,
-		                      MPI_MODE_CREATE | MPI_MODE_EXCL | MPI_MODE_WRONLY,
-		                      MPI_INFO_NULL, &file_handle);
-  if (err != MPI_SUCCESS)  {
-    if (params.rank == MASTER) {
-      MPI_File_delete(FINALSTATEFILE,MPI_INFO_NULL);
+  if (params.rank == MASTER){
+    fp = fopen(FINALSTATEFILE, "w");
+    if (fp == NULL){
+        die("could not open file output file", __LINE__, __FILE__);
     }
-    MPI_File_open(MPI_COMM_WORLD, FINALSTATEFILE, 
-                  MPI_MODE_CREATE|MPI_MODE_EXCL|MPI_MODE_WRONLY, 
-                  MPI_INFO_NULL, &file_handle);
   }
 
+  // open the stream
+  FILE *stream;
+  char *buf;
+  size_t len;
+  stream = open_memstream(&buf, &len);
 
-  for (int jj = 1; jj < (params.ny+1); jj++)
+  for (int jj = 1; jj < (params.my_num_rows+1); jj++)
   { 
     for (int ii = 8; ii < (params.nx-8); ii++)
   	{ 
-      MPI_Barrier(MPI_COMM_WORLD);
-      if (jj-1 < params.start_ny || jj-1 >= params.end_ny){
-        continue;
-      }
-      int temp_jj = jj - params.start_ny;
 	    /* an occupied cell */
-	    if (obstacles[ii + temp_jj*params.nx])
+	    if (obstacles[ii + jj*params.nx])
 	    {
 	      u_x = u_y = u = 0.f;
 	      pressure = params.density * c_sq;
@@ -842,51 +891,70 @@ int write_values(const t_param params, t_speed_SOA* cells, float* obstacles, flo
 	    {
 	      local_density = 0.f;
 
-	     	local_density += cells->c0[ii + temp_jj*params.nx];
-	      local_density += cells->c1[ii + temp_jj*params.nx];
-	      local_density += cells->c2[ii + temp_jj*params.nx];
-	      local_density += cells->c3[ii + temp_jj*params.nx];
-	      local_density += cells->c4[ii + temp_jj*params.nx];
-	      local_density += cells->c5[ii + temp_jj*params.nx];
-	      local_density += cells->c6[ii + temp_jj*params.nx];
-	      local_density += cells->c7[ii + temp_jj*params.nx];
-	      local_density += cells->c8[ii + temp_jj*params.nx];
+	     	local_density += cells->c0[ii + jj*params.nx];
+	      local_density += cells->c1[ii + jj*params.nx];
+	      local_density += cells->c2[ii + jj*params.nx];
+	      local_density += cells->c3[ii + jj*params.nx];
+	      local_density += cells->c4[ii + jj*params.nx];
+	      local_density += cells->c5[ii + jj*params.nx];
+	      local_density += cells->c6[ii + jj*params.nx];
+	      local_density += cells->c7[ii + jj*params.nx];
+	      local_density += cells->c8[ii + jj*params.nx];
 
 	      /* compute x velocity component */
-	      u_x = (cells->c0[ii + temp_jj*params.nx]
-               + cells->c5[ii + temp_jj*params.nx]
-               + cells->c8[ii + temp_jj*params.nx]
-		     - (cells->c3[ii + temp_jj*params.nx]
-                  + cells->c6[ii + temp_jj*params.nx]
-			  + cells->c7[ii + temp_jj*params.nx]))
+	      u_x = (cells->c0[ii + jj*params.nx]
+               + cells->c5[ii + jj*params.nx]
+               + cells->c8[ii + jj*params.nx]
+		     - (cells->c3[ii + jj*params.nx]
+                  + cells->c6[ii + jj*params.nx]
+			  + cells->c7[ii + jj*params.nx]))
 		    / local_density;
 	      /* compute y velocity component */
-	      u_y = (cells->c2[ii + temp_jj*params.nx]
-               + cells->c5[ii + temp_jj*params.nx]
-               + cells->c6[ii + temp_jj*params.nx]
-		     - (cells->c4[ii + temp_jj*params.nx]
-                  + cells->c7[ii + temp_jj*params.nx]
-			  + cells->c8[ii + temp_jj*params.nx]))
+	      u_y = (cells->c2[ii + jj*params.nx]
+               + cells->c5[ii + jj*params.nx]
+               + cells->c6[ii + jj*params.nx]
+		     - (cells->c4[ii + jj*params.nx]
+                  + cells->c7[ii + jj*params.nx]
+			  + cells->c8[ii + jj*params.nx]))
 		    / local_density;
 	      /* compute norm of velocity */
 	      u = sqrtf((u_x * u_x) + (u_y * u_y));
 	      /* compute pressure */
 	      pressure = local_density * c_sq;
 	    }
-	    /* write to file */
-      char temp[100];
-      int size = sprintf(temp, "%d %d %.12E %.12E %.12E %.12E %d\n", (ii-8), (jj-1), u_x, u_y, u, pressure, (int)obstacles[ii + temp_jj*params.nx]);
-      char line[size];
-      sprintf(line, "%d %d %.12E %.12E %.12E %.12E %d\n", (ii-8), (jj-1), u_x, u_y, u, pressure, (int)obstacles[ii + temp_jj*params.nx]);
-      MPI_File_write_shared(file_handle, line, size, MPI_CHAR, MPI_STATUS_IGNORE);
+
+      // write what you want with fprintf() into the stream
+      fprintf(stream, "%d %d %.12E %.12E %.12E %.12E %d\n", (ii-8), (params.start_ny+jj-1), u_x, u_y, u, pressure, (int)obstacles[ii + jj*params.nx]);
+      
 	  }
   }
-
-  MPI_File_close(&file_handle);
-
-  if (params.rank != MASTER){
+  // close the stream, the buffer is allocated and the size is set !
+  fclose(stream);
+  if (params.rank == MASTER){
+    fprintf(fp, buf);
+    free(buf);
+    int num_rows_per_rank = floor(params.ny/params.nprocs);
+    int num_heavier_ranks = params.ny % params.nprocs;
+    for (int i = 1; i < params.nprocs; ++i){
+      MPI_Status status;
+      // Probe for an incoming message from process zero
+      MPI_Probe(i, 0, params.comm, &status);
+      int length;
+      // When probe returns, the status object has the size and other
+      // attributes of the incoming message. Get the message size
+      MPI_Get_count(&status, MPI_CHAR, &length);
+      char temp[length];
+      MPI_Recv(temp, length, MPI_CHAR, i, 0, params.comm, MPI_STATUS_IGNORE);
+      fprintf(fp, temp);
+    }
+  } else {
+    // +1 to account for null terminator
+    MPI_Ssend(buf, len+1, MPI_CHAR, 0, 0, params.comm);
+    free(buf);
     return EXIT_SUCCESS;
   }
+
+  fclose(fp);
 
   fp = fopen(AVVELSFILE, "w");
 
