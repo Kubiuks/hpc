@@ -58,7 +58,8 @@
 #include <immintrin.h>
 #include <mpi.h>
 
-#define NSPEEDS         9
+#pragma omp declare reduction(_mm256_add_ps : __m256 : omp_out = _mm256_add_ps(omp_in, omp_out))
+
 #define FINALSTATEFILE  "final_state.dat"
 #define AVVELSFILE      "av_vels.dat"
 #define MASTER 0
@@ -81,8 +82,6 @@ typedef struct
   int start_ny;
   int end_ny;
   int my_num_rows;
-  MPI_Comm comm;
-  int flag;
 } t_param;
 
 /* struct to hold the 'speed' values */
@@ -161,7 +160,6 @@ int main(int argc, char* argv[])
   float* av_vels   = NULL;      /* a record of the av. velocity computed for each timestep */
   struct timeval timstr;                                                             /* structure to hold elapsed time */
   double tot_tic, tot_toc, init_tic, init_toc, comp_tic, comp_toc, col_tic, col_toc; /* floating point numbers to calculate elapsed wallclock time */
-  params.flag = 0;
 
   /* parse the command line */
   if (argc != 3)
@@ -180,11 +178,6 @@ int main(int argc, char* argv[])
   init_tic=tot_tic;
   
   initialise(paramfile, obstaclefile, &params, &obstacles, &av_vels, &cells, &tmp_cells);
-  if(params.flag == 1){
-    MPI_Comm_free(&params.comm);
-    MPI_Finalize();
-    return EXIT_SUCCESS;
-  }
 
   /* Init time stops here, compute time starts*/
   gettimeofday(&timstr, NULL);
@@ -305,7 +298,7 @@ float collision(const t_param params, t_speed_SOA*  cells, t_speed_SOA*  tmp_cel
   MPI_Type_commit(&composite_row);
 
   // receive bottom
-  MPI_Irecv(&cells->c2[8], 1, composite_row, params.rank_row_below, 0, params.comm, &requests_receive[0]);
+  MPI_Irecv(&cells->c2[8], 1, composite_row, params.rank_row_below, 0, MPI_COMM_WORLD, &requests_receive[0]);
 
   MPI_Aint base_address_2;
   MPI_Aint address_2;
@@ -330,11 +323,11 @@ float collision(const t_param params, t_speed_SOA*  cells, t_speed_SOA*  tmp_cel
   MPI_Type_commit(&composite_row_2);
 
   // receive top
-  MPI_Irecv(&cells->c4[8 + (params.my_num_rows+1)*params.nx], 1, composite_row_2, params.rank_row_above, 0, params.comm, &requests_receive[1]);
+  MPI_Irecv(&cells->c4[8 + (params.my_num_rows+1)*params.nx], 1, composite_row_2, params.rank_row_above, 0, MPI_COMM_WORLD, &requests_receive[1]);
 
-  // send top, sned bottom
-  MPI_Isend(&cells->c2[8 + params.my_num_rows*params.nx], 1, composite_row, params.rank_row_above, 0, params.comm, &requests_send[0]);
-  MPI_Isend(&cells->c4[8 + params.nx], 1, composite_row_2, params.rank_row_below, 0, params.comm, &requests_send[1]);
+  // send top, send bottom
+  MPI_Isend(&cells->c2[8 + params.my_num_rows*params.nx], 1, composite_row, params.rank_row_above, 0, MPI_COMM_WORLD, &requests_send[0]);
+  MPI_Isend(&cells->c4[8 + params.nx], 1, composite_row_2, params.rank_row_below, 0, MPI_COMM_WORLD, &requests_send[1]);
 
   const float w0 = 4.f / 9.f;   /* weighting factor */
   const float w1 = 1.f / 9.f;   /* weighting factor */
@@ -352,6 +345,7 @@ float collision(const t_param params, t_speed_SOA*  cells, t_speed_SOA*  tmp_cel
   MPI_Waitall(2, requests_receive, MPI_STATUSES_IGNORE);
 
   /* loop over the cells in the grid */
+  #pragma omp parallel for reduction(_mm256_add_ps:tot_u)
   for (int jj = 1; jj < params.my_num_rows+1; jj++)
   {
     for (int ii = 8; ii < params.nx-8; ii += 8)
@@ -496,10 +490,11 @@ float collision(const t_param params, t_speed_SOA*  cells, t_speed_SOA*  tmp_cel
   {
     temp_tot_u += (float)tot_u[i];
   }
+  
   MPI_Waitall(2, requests_send, MPI_STATUSES_IGNORE);
   MPI_Type_free(&composite_row);
   MPI_Type_free(&composite_row_2);
-  MPI_Reduce(&temp_tot_u, &res_tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, params.comm);
+  MPI_Reduce(&temp_tot_u, &res_tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
 
   return res_tot_u / (float)params.non_obst;
 }
@@ -552,7 +547,7 @@ float av_velocity(const t_param params, t_speed_SOA*  cells, float*  obstacles)
   }
   float res_tot_u = 0.f;
 
-  MPI_Reduce(&tot_u, &res_tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, params.comm);
+  MPI_Reduce(&tot_u, &res_tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
 
   return res_tot_u / (float)params.non_obst;
 }
@@ -609,25 +604,10 @@ int initialise(const char* paramfile, const char* obstaclefile,
   fclose(fp);
 
   // calculate what rows the rank will be allocated and other constants
-  int tmp_rank, tmp_nprocs;
-  MPI_Comm_rank(MPI_COMM_WORLD, &tmp_rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &tmp_nprocs);
-
-  int var = 14;
-
-  if(params->nx == 128 && tmp_nprocs > var){
-    MPI_Comm_split(MPI_COMM_WORLD, tmp_rank<var, tmp_rank, &params->comm);
-    if(tmp_rank >= var){
-      params->flag = 1;
-      return EXIT_SUCCESS;
-    }
-  } else {
-    params->comm = MPI_COMM_WORLD;
-  }
   
   int nprocs, rank;
-  MPI_Comm_size(params->comm, &nprocs);
-  MPI_Comm_rank(params->comm, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   params->rank = rank;
   params->nprocs = nprocs;
@@ -653,6 +633,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   params->non_obst = params->nx*params->ny;
   params->nx = params->nx+16;
+
+  // printf("I am %d and I have %d rows", rank, my_num_rows);
 
   // allocating memory for SOA
   *cells_ptr_SOA = malloc(sizeof(t_speed_SOA));
@@ -690,6 +672,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
   float w1 = params->density      / 9.f;
   float w2 = params->density      / 36.f;
   
+  #pragma omp parallel for
   for (int jj = 1; jj < (my_num_rows+1); jj++)
   {
     for (int ii = 8; ii < (params->nx-8); ii++)
@@ -706,10 +689,24 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	  (*cells_ptr_SOA)->c6[ii + jj*params->nx] = w2;
 	  (*cells_ptr_SOA)->c7[ii + jj*params->nx] = w2;
 	  (*cells_ptr_SOA)->c8[ii + jj*params->nx] = w2;
+
+    /* centre */
+	  (*tmp_cells_ptr_SOA)->c0[ii + jj*params->nx] = w0;
+	  /* axis directions */
+	  (*tmp_cells_ptr_SOA)->c1[ii + jj*params->nx] = w1;
+	  (*tmp_cells_ptr_SOA)->c2[ii + jj*params->nx] = w1;
+	  (*tmp_cells_ptr_SOA)->c3[ii + jj*params->nx] = w1;
+	  (*tmp_cells_ptr_SOA)->c4[ii + jj*params->nx] = w1;
+	  /* diagonals */
+	  (*tmp_cells_ptr_SOA)->c5[ii + jj*params->nx] = w2;
+	  (*tmp_cells_ptr_SOA)->c6[ii + jj*params->nx] = w2;
+	  (*tmp_cells_ptr_SOA)->c7[ii + jj*params->nx] = w2;
+	  (*tmp_cells_ptr_SOA)->c8[ii + jj*params->nx] = w2;
 	  }
   }
 
   /* first set all cells in obstacle array to zero */
+  #pragma omp parallel for
   for (int jj = 1; jj < (my_num_rows+1); jj++)
   {
     for (int ii = 8; ii < (params->nx-8); ii++)
@@ -848,7 +845,7 @@ float total_density(const t_param params, t_speed_SOA* cells)
 
   float res_total = 0.f;
 
-  MPI_Reduce(&total, &res_total, 1, MPI_FLOAT, MPI_SUM, MASTER, params.comm);
+  MPI_Reduce(&total, &res_total, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
 
   return res_total;
 }
@@ -938,18 +935,18 @@ int write_values(const t_param params, t_speed_SOA* cells, float* obstacles, flo
     for (int i = 1; i < params.nprocs; ++i){
       MPI_Status status;
       // Probe for an incoming message from process zero
-      MPI_Probe(i, 0, params.comm, &status);
+      MPI_Probe(i, 0, MPI_COMM_WORLD, &status);
       int length;
       // When probe returns, the status object has the size and other
       // attributes of the incoming message. Get the message size
       MPI_Get_count(&status, MPI_CHAR, &length);
       char temp[length];
-      MPI_Recv(temp, length, MPI_CHAR, i, 0, params.comm, MPI_STATUS_IGNORE);
+      MPI_Recv(temp, length, MPI_CHAR, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       fprintf(fp, temp);
     }
   } else {
     // +1 to account for null terminator
-    MPI_Ssend(buf, len+1, MPI_CHAR, 0, 0, params.comm);
+    MPI_Ssend(buf, len+1, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
     free(buf);
     return EXIT_SUCCESS;
   }

@@ -1,0 +1,1 @@
+run on 4 nodes, with 1 task per node and 28 cores per task

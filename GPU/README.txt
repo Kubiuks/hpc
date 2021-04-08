@@ -1,0 +1,1 @@
+run on gpu partition, 1 node, with 1 gpu(--gres=gpu:1)
